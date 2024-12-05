@@ -54,18 +54,56 @@ jobs:
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Notify Discord of Successful Deployment
+        if: success()
+        uses: rjstone/discord-webhook-notify@v1
+        with:
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          severity: info
+          details: |
+            🚀 **Deployment Successful!**
+            **Version:** ${{ needs.tag_release.outputs.new_tag }}
+            **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+          username: "GitHub Actions"
+          avatarUrl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
 
   tag_release:
     needs: deploy
     runs-on: ubuntu-20.04
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.simple_deployment_pipeline.outputs.skip_deploy != 'true' }}
+    outputs:
+      new_tag: ${{ steps.tag.outputs.new_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: '0'
       - name: Bump version and push tag
+        id: tag
         uses: anothrNick/github-tag-action@1.71.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
           DRY_RUN: false
+
+  notify_failure:
+    if: failure()
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get Last Commit Message
+        id: last_commit
+        run: |
+          echo "message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+      - name: Notify Discord of Failure
+        uses: rjstone/discord-webhook-notify@v1
+        with:
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          severity: error
+          details: |
+            💥 **Build Failed!**
+            **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **Message:** ${{ steps.last_commit.outputs.message }}
+            **Job:** ${{ github.job }}
+            Please check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+          username: "GitHub Actions"
+          avatarUrl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
