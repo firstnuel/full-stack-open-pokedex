@@ -93,14 +93,12 @@ jobs:
           DRY_RUN: false
       - name: Notify Discord of Successful Tagging
         if: success()
+        continue-on-error: true 
         uses: rjstone/discord-webhook-notify@v1
         with:
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
           severity: info
-          details: |
-            🏷️ **Version Tagged Successfully!**
-            **New Version:** ${{ steps.tag.outputs.new_tag }}
-            **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+          details: deploy successful, Health check passed
           username: "GitHub Actions"
           avatarUrl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
 
