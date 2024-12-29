@@ -16,58 +16,65 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install dependencies 
         run: npm install  
+
       - name: Check style
         run: npm run eslint
+
       - name: Build
         run: npm run build
+
       - name: test
         run: npm test
+
       - name: e2e test
         uses: cypress-io/github-action@v5
         with:
           command: npm run test:e2e
           start: npm run start-prod
           wait-on: http://localhost:5000
-      - name: Notify Failure
-        uses: rjstone/discord-webhook-notify@v1
+
+      - name: Notify Discord on failure
         if: failure()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_USERNAME: GitHub Actions
+          DISCORD_EMBEDS: |
+            [{
+              "title": "Tests failed!",
+              "color": 16711680,
+              "description": "Commit [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) caused the build to fail. Check the [logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more information.",
+              "footer": {
+                "text": "Severity: Error"
+              }
+            }]
+        uses: 'Ilshidur/action-discord@0c4b27844ba47cb1c7bee539c8eead5284ce9fa9'
         with:
-          severity: error
-          details: >
-            Commit [${{ github.event.pull_request.head.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }})
-            broke the build by @${{ github.actor }}.
-          text: "Build Failed!"
-          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          args: 'The project Pokedex failed to build.'
 
   deploy:
     needs: simple_deployment_pipeline
     runs-on: ubuntu-latest
     concurrency: deploy-group
-    if: ${{ (github.event.pull_request.merged == true && contains(join(github.event.commits.*.message, ' '), '#skip') == false) }}
+    if: github.event_name == 'push' && !contains(join(github.event.commits.*.message, ' '), '#skip')
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          
       - name: Check the deployed service URL
         uses: jtalk/url-health-check-action@v4
         with:
           url: https://full-stack-open-pokedex-restless-voice-3470.fly.dev/health
-      - name: Notify Success
-        uses: rjstone/discord-webhook-notify@v1
-        if: success()
-        with:
-          severity: info
-          text: "A new version of Blog App deployed"
-          details: "The app was successfully deployed to Fly! \nDeployed by ${{ github.actor }}."
-          footer: " severity: infoformational."
-          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+
 
   tag_release:
     needs: deploy
+    name: Tag and Release the code
     runs-on: ubuntu-20.04
     permissions:
         contents: write
@@ -81,3 +88,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
           WITH_V : true
+
+      - name: Notify Discord on success
+        if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_USERNAME: GitHub Actions
+          DISCORD_EMBEDS: |
+            [{
+              "title": "New version deployed!",
+              "color": 65280,
+              "description": "A new version of Bloglist deployed successfully. Check it out [here](https://bloglist-winter-snowflake-5257.fly.dev/).",
+              "footer": {
+                "text": "Severity: Info"
+              }
+            }]
+        uses: 'Ilshidur/action-discord@0c4b27844ba47cb1c7bee539c8eead5284ce9fa9'
+        with:
+          args: 'Project Bloglist deployed successfully.'
+          
