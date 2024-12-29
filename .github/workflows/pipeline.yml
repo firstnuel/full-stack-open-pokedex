@@ -65,19 +65,12 @@ jobs:
       - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          
       - name: Check the deployed service URL
         uses: jtalk/url-health-check-action@v4
         with:
           url: https://full-stack-open-pokedex-restless-voice-3470.fly.dev/health
-      - name: Notify Success
-        uses: rjstone/discord-webhook-notify@v1
-        if: success()
-        with:
-          severity: info
-          text: "A new version of Pokedex deployed"
-          details: "The app was successfully deployed to Fly! \nDeployed by ${{ github.actor }}."
-          footer: " severity: infoformational."
-          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+
 
   tag_release:
     needs: deploy
