@@ -30,12 +30,22 @@ jobs:
           command: npm run test:e2e
           start: npm run start-prod
           wait-on: http://localhost:5000
+      - name: Notify Failure
+        uses: rjstone/discord-webhook-notify@v1
+        if: failure()
+        with:
+          severity: error
+          details: >
+            Commit [${{ github.event.pull_request.head.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }})
+            broke the build by @${{ github.actor }}.
+          text: "Build Failed!"
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
 
   deploy:
     needs: simple_deployment_pipeline
     runs-on: ubuntu-latest
     concurrency: deploy-group
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(join(github.event.commits.*.message, ' '), '#skip') == false }}
+    if: ${{ (github.event.pull_request.merged == true && contains(join(github.event.commits.*.message, ' '), '#skip') == false) }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -46,6 +56,15 @@ jobs:
         uses: jtalk/url-health-check-action@v4
         with:
           url: https://full-stack-open-pokedex-restless-voice-3470.fly.dev/health
+      - name: Notify Success
+        uses: rjstone/discord-webhook-notify@v1
+        if: success()
+        with:
+          severity: info
+          text: "A new version of Blog App deployed"
+          details: "The app was successfully deployed to Fly! \nDeployed by ${{ github.actor }}."
+          footer: " severity: infoformational."
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
 
   tag_release:
     needs: deploy
