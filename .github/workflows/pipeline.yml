@@ -1,6 +1,5 @@
 name: Deployment pipeline
 
-
 on:
   push:
     branches:
@@ -12,10 +11,6 @@ on:
 jobs:
   simple_deployment_pipeline:
     runs-on: ubuntu-20.04
-    outputs:
-      skip_deploy: ${{ steps.check_skip.outputs.skip_deploy }}
-    env:
-      skip_deploy: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,94 +30,35 @@ jobs:
           command: npm run test:e2e
           start: npm run start-prod
           wait-on: http://localhost:5000
-      - name: Check for #skip in commit messages
-        id: check_skip
-        run: |
-          if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            messages="${{ join(github.event.commits.*.message, ' ') }}"
-            if echo "$messages" | grep -q "#skip"; then
-              echo "skip_deploy=true" >> $GITHUB_OUTPUT
-            else
-              echo "skip_deploy=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "skip_deploy=false" >> $GITHUB_OUTPUT
-          fi
 
   deploy:
     needs: simple_deployment_pipeline
     runs-on: ubuntu-latest
     concurrency: deploy-group
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.simple_deployment_pipeline.outputs.skip_deploy == 'false' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(join(github.event.commits.*.message, ' '), '#skip') == false }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only
+      - run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Notify Discord of Successful Deployment
-        if: success()
-        uses: rjstone/discord-webhook-notify@v1
+      - name: Check the deployed service URL
+        uses: jtalk/url-health-check-action@v4
         with:
-          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
-          severity: info
-          details: |
-            🚀 **Deployment Successful!**
-            **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
-            **Branch:** ${{ github.ref_name }}
-          username: "GitHub Actions"
-          avatarUrl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          url: https://full-stack-open-pokedex-restless-voice-3470.fly.dev/health
 
   tag_release:
     needs: deploy
     runs-on: ubuntu-20.04
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.simple_deployment_pipeline.outputs.skip_deploy == 'false' }}
-    outputs:
-      new_tag: ${{ steps.tag.outputs.new_tag }}
+    permissions:
+        contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: '0'
       - name: Bump version and push tag
-        id: tag
         uses: anothrNick/github-tag-action@1.71.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
-          DRY_RUN: false
-      - name: Notify Discord of Successful Tagging
-        if: success()
-        continue-on-error: true 
-        uses: rjstone/discord-webhook-notify@v1
-        with:
-          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
-          severity: info
-          details: deploy successful, Health check passed
-          username: "GitHub Actions"
-          avatarUrl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-
-  notify_failure:
-    if: failure()
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: '0'
-      - name: Get Last Commit Message
-        id: last_commit
-        run: |
-          echo "message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
-      - name: Notify Discord of Failure
-        uses: rjstone/discord-webhook-notify@v1
-        with:
-          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
-          severity: error
-          details: |
-            💥 **Build Failed!**
-            **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
-            **Message:** ${{ steps.last_commit.outputs.message }}
-            **Job:** ${{ github.job }}
-            Please check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-          username: "GitHub Actions"
-          avatarUrl: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          WITH_V : true
